@@ -6,7 +6,7 @@
 //
 
 import Foundation
-#if os(iOS) || os(tvOS) || os(watchOS) || targetEnvironment(macCatalyst)
+#if canImport(UIKit)
 import UIKit
 
 /// An Objective-C compatible wrapper around Lottie's Animation class.
@@ -30,7 +30,7 @@ public final class CompatibleAnimation: NSObject {
 
   // MARK: Internal
 
-  internal var animation: LottieAnimation? {
+  var animation: LottieAnimation? {
     LottieAnimation.named(name, bundle: bundle, subdirectory: subdirectory)
   }
 
@@ -77,17 +77,43 @@ public enum CompatibleRenderingEngineOption: Int {
   {
     switch configuration {
     case .shared:
-      return LottieConfiguration.shared
+      LottieConfiguration.shared
     case .defaultEngine:
-      return LottieConfiguration(renderingEngine: .coreAnimation)
+      LottieConfiguration(renderingEngine: .coreAnimation)
     case .automatic:
-      return LottieConfiguration(renderingEngine: .automatic)
+      LottieConfiguration(renderingEngine: .automatic)
     case .mainThread:
-      return LottieConfiguration(renderingEngine: .mainThread)
+      LottieConfiguration(renderingEngine: .mainThread)
     case .coreAnimation:
-      return LottieConfiguration(renderingEngine: .coreAnimation)
+      LottieConfiguration(renderingEngine: .coreAnimation)
     }
   }
+}
+
+/// An Objective-C compatible version of `LottieBackgroundBehavior`.
+@objc
+public enum CompatibleBackgroundBehavior: Int {
+  /// Stop the animation and reset it to the beginning of its current play time. The completion block is called.
+  case stop
+
+  /// Pause the animation in its current state. The completion block is called.
+  case pause
+
+  /// Pause the animation and restart it when the application moves to the foreground.
+  /// The completion block is stored and called when the animation completes.
+  ///  - This is the default when using the Main Thread rendering engine.
+  case pauseAndRestore
+
+  /// Stops the animation and sets it to the end of its current play time. The completion block is called.
+  case forceFinish
+
+  /// The animation continues playing in the background.
+  ///  - This is the default when using the Core Animation rendering engine.
+  ///    Playing an animation using the Core Animation engine doesn't come with any CPU overhead,
+  ///    so using `.continuePlaying` avoids the need to stop and then resume the animation
+  ///    (which does come with some CPU overhead).
+  ///  - This mode should not be used with the Main Thread rendering engine.
+  case continuePlaying
 }
 
 /// An Objective-C compatible wrapper around Lottie's LottieAnimationView.
@@ -167,28 +193,27 @@ public final class CompatibleAnimationView: UIView {
     commonInit()
   }
 
-  required init?(coder _: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
+  required init?(coder: NSCoder) {
+    animationView = LottieAnimationView()
+    super.init(coder: coder)
+    commonInit()
   }
 
   // MARK: Public
 
-  @objc
-  public var compatibleAnimation: CompatibleAnimation? {
+  @objc public var compatibleAnimation: CompatibleAnimation? {
     didSet {
       animationView.animation = compatibleAnimation?.animation
     }
   }
 
-  @objc
-  public var loopAnimationCount: CGFloat = 0 {
+  @objc public var loopAnimationCount: CGFloat = 0 {
     didSet {
       animationView.loopMode = loopAnimationCount == -1 ? .loop : .repeat(Float(loopAnimationCount))
     }
   }
 
-  @objc
-  public var compatibleDictionaryTextProvider: CompatibleDictionaryTextProvider? {
+  @objc public var compatibleDictionaryTextProvider: CompatibleDictionaryTextProvider? {
     didSet {
       animationView.textProvider = compatibleDictionaryTextProvider?.textProvider ?? DefaultTextProvider()
     }
@@ -254,6 +279,38 @@ public final class CompatibleAnimationView: UIView {
   @objc
   public var isAnimationPlaying: Bool {
     animationView.isAnimationPlaying
+  }
+
+  @objc
+  public var backgroundMode: CompatibleBackgroundBehavior {
+    get {
+      switch animationView.backgroundBehavior {
+      case .stop:
+        .stop
+      case .pause:
+        .pause
+      case .pauseAndRestore:
+        .pauseAndRestore
+      case .forceFinish:
+        .forceFinish
+      case .continuePlaying:
+        .continuePlaying
+      }
+    }
+    set {
+      switch newValue {
+      case .stop:
+        animationView.backgroundBehavior = .stop
+      case .pause:
+        animationView.backgroundBehavior = .pause
+      case .pauseAndRestore:
+        animationView.backgroundBehavior = .pauseAndRestore
+      case .forceFinish:
+        animationView.backgroundBehavior = .forceFinish
+      case .continuePlaying:
+        animationView.backgroundBehavior = .continuePlaying
+      }
+    }
   }
 
   @objc
@@ -384,7 +441,7 @@ public final class CompatibleAnimationView: UIView {
   public func getColorValue(for keypath: CompatibleAnimationKeypath, atFrame: CGFloat) -> UIColor? {
     let value = animationView.getValue(for: keypath.animationKeypath, atFrame: atFrame)
     guard let colorValue = value as? LottieColor else {
-      return nil;
+      return nil
     }
 
     return UIColor(
@@ -475,7 +532,7 @@ public final class CompatibleDictionaryTextProvider: NSObject {
 
   // MARK: Internal
 
-  internal var textProvider: AnimationTextProvider? {
+  var textProvider: AnimationKeypathTextProvider? {
     DictionaryTextProvider(values)
   }
 

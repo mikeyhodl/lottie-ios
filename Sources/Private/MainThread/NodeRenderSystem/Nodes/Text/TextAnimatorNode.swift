@@ -5,8 +5,6 @@
 //  Created by Brandon Withrow on 2/19/19.
 //
 
-import CoreGraphics
-import Foundation
 import QuartzCore
 
 // MARK: - TextAnimatorNodeProperties
@@ -17,7 +15,8 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
 
   init(textAnimator: TextAnimator) {
     keypathName = textAnimator.name
-    var properties = [String : AnyNodeProperty]()
+    textRangeUnit = textAnimator.textRangeUnit
+    var properties = [String: AnyNodeProperty]()
 
     if let keyframeGroup = textAnimator.anchor {
       anchor = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
@@ -28,14 +27,14 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
 
     if let keyframeGroup = textAnimator.position {
       position = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
-      properties["Position"] = position
+      properties[PropertyName.position.rawValue] = position
     } else {
       position = nil
     }
 
     if let keyframeGroup = textAnimator.scale {
       scale = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
-      properties["Scale"] = scale
+      properties[PropertyName.scale.rawValue] = scale
     } else {
       scale = nil
     }
@@ -71,14 +70,14 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
     if let keyframeGroup = textAnimator.rotationZ {
       rotationZ = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
       properties["Rotation Z"] = rotationZ
-      properties["Rotation"] = rotationZ
+      properties[PropertyName.rotation.rawValue] = rotationZ
     } else {
       rotationZ = nil
     }
 
     if let keyframeGroup = textAnimator.opacity {
       opacity = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
-      properties["Opacity"] = opacity
+      properties[PropertyName.opacity.rawValue] = opacity
     } else {
       opacity = nil
     }
@@ -99,7 +98,7 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
 
     if let keyframeGroup = textAnimator.strokeWidth {
       strokeWidth = NodeProperty(provider: KeyframeInterpolator(keyframes: keyframeGroup.keyframes))
-      properties["Stroke Width"] = strokeWidth
+      properties[PropertyName.strokeWidth.rawValue] = strokeWidth
     } else {
       strokeWidth = nil
     }
@@ -109,6 +108,27 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
       properties["Tracking"] = tracking
     } else {
       tracking = nil
+    }
+
+    if let startKeyframes = textAnimator.start {
+      start = NodeProperty(provider: KeyframeInterpolator(keyframes: startKeyframes.keyframes))
+      properties["Start"] = start
+    } else {
+      start = nil
+    }
+
+    if let endKeyframes = textAnimator.end {
+      end = NodeProperty(provider: KeyframeInterpolator(keyframes: endKeyframes.keyframes))
+      properties["End"] = end
+    } else {
+      end = nil
+    }
+
+    if let selectedRangeOpacityKeyframes = textAnimator.opacity {
+      selectedRangeOpacity = NodeProperty(provider: KeyframeInterpolator(keyframes: selectedRangeOpacityKeyframes.keyframes))
+      properties["SelectedRangeOpacity"] = selectedRangeOpacity
+    } else {
+      selectedRangeOpacity = nil
     }
 
     keypathProperties = properties
@@ -133,6 +153,10 @@ final class TextAnimatorNodeProperties: NodePropertyMap, KeypathSearchable {
   let fillColor: NodeProperty<LottieColor>?
   let strokeWidth: NodeProperty<LottieVector1D>?
   let tracking: NodeProperty<LottieVector1D>?
+  let start: NodeProperty<LottieVector1D>?
+  let end: NodeProperty<LottieVector1D>?
+  let selectedRangeOpacity: NodeProperty<LottieVector1D>?
+  let textRangeUnit: TextRangeUnit?
 
   let keypathProperties: [String: AnyNodeProperty]
   let properties: [AnyNodeProperty]
@@ -225,6 +249,33 @@ final class TextOutputNode: NodeOutput {
     }
   }
 
+  var start: CGFloat? {
+    get {
+      _start
+    }
+    set {
+      _start = newValue
+    }
+  }
+
+  var end: CGFloat? {
+    get {
+      _end
+    }
+    set {
+      _end = newValue
+    }
+  }
+
+  var selectedRangeOpacity: CGFloat? {
+    get {
+      _selectedRangeOpacity
+    }
+    set {
+      _selectedRangeOpacity = newValue
+    }
+  }
+
   func hasOutputUpdates(_: CGFloat) -> Bool {
     // TODO Fix This
     true
@@ -238,6 +289,9 @@ final class TextOutputNode: NodeOutput {
   fileprivate var _fillColor: CGColor?
   fileprivate var _tracking: CGFloat?
   fileprivate var _strokeWidth: CGFloat?
+  fileprivate var _start: CGFloat?
+  fileprivate var _end: CGFloat?
+  fileprivate var _selectedRangeOpacity: CGFloat?
 }
 
 // MARK: - TextAnimatorNode
@@ -280,10 +334,13 @@ class TextAnimatorNode: AnimatorNode {
 
   func rebuildOutputs(frame _: CGFloat) {
     textOutputNode.xform = textAnimatorProperties.caTransform
-    textOutputNode.opacity = (textAnimatorProperties.opacity?.value.cgFloatValue ?? 100) * 0.01
+    textOutputNode.opacity = 1.0
     textOutputNode.strokeColor = textAnimatorProperties.strokeColor?.value.cgColorValue
     textOutputNode.fillColor = textAnimatorProperties.fillColor?.value.cgColorValue
     textOutputNode.tracking = textAnimatorProperties.tracking?.value.cgFloatValue ?? 1
     textOutputNode.strokeWidth = textAnimatorProperties.strokeWidth?.value.cgFloatValue ?? 0
+    textOutputNode.start = textAnimatorProperties.start?.value.cgFloatValue
+    textOutputNode.end = textAnimatorProperties.end?.value.cgFloatValue
+    textOutputNode.selectedRangeOpacity = (textAnimatorProperties.opacity?.value.cgFloatValue).flatMap { $0 * 0.01 }
   }
 }

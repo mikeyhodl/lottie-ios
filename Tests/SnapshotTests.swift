@@ -13,7 +13,7 @@ import UIKit
 // MARK: - SnapshotTests
 
 @MainActor
-class SnapshotTests: XCTestCase {
+final class SnapshotTests: XCTestCase {
 
   // MARK: Internal
 
@@ -49,9 +49,15 @@ class SnapshotTests: XCTestCase {
         .replacingOccurrences(of: "testCoreAnimationRenderingEngine.", with: "")
         .replacingOccurrences(of: "testAutomaticRenderingEngine.", with: "")
 
-      for percentage in progressPercentagesToSnapshot {
+      for percentage in knownProgressPercentageValues {
         animationName = animationName.replacingOccurrences(
           of: "-\(Int(percentage * 100)).png",
+          with: "")
+      }
+
+      for frame in knownFrameValues {
+        animationName = animationName.replacingOccurrences(
+          of: "-Frame-\(Int(frame)).png",
           with: "")
       }
 
@@ -68,10 +74,12 @@ class SnapshotTests: XCTestCase {
   /// reference a sample json file that actually exists
   func testCustomSnapshotConfigurationsHaveCorrespondingSampleFile() {
     for (animationName, _) in SnapshotConfiguration.customMapping {
-      let expectedSampleFile = Bundle.lottie.bundleURL.appendingPathComponent("Samples/\(animationName).json")
+      let expectedJsonFile = Bundle.lottie.bundleURL.appendingPathComponent("Samples/\(animationName).json")
+      let expectedDotLottieFile = Bundle.lottie.bundleURL.appendingPathComponent("Samples/\(animationName).lottie")
 
       XCTAssert(
-        Samples.sampleAnimationURLs.contains(expectedSampleFile),
+        Samples.sampleAnimationURLs.contains(expectedJsonFile)
+          || Samples.sampleAnimationURLs.contains(expectedDotLottieFile),
         "Custom configuration for \"\(animationName)\" has no corresponding sample animation")
     }
   }
@@ -84,6 +92,11 @@ class SnapshotTests: XCTestCase {
   }
 
   override func setUp() {
+    // Register fonts from the Samples/Fonts directory
+    for fontAssetURL in Bundle.lottie.urls(forResourcesWithExtension: "ttf", subdirectory: "Samples/Fonts") ?? [] {
+      CTFontManagerRegisterFontsForURL(fontAssetURL as CFURL, .process, nil)
+    }
+
     LottieLogger.shared = .printToConsole
     TestHelpers.snapshotTestsAreRunning = true
     isRecording = false // Change it here to `true` if you want to generate the snapshots
@@ -96,8 +109,37 @@ class SnapshotTests: XCTestCase {
 
   // MARK: Private
 
-  /// `currentProgress` percentages that should be snapshot in `compareSampleSnapshots`
-  private let progressPercentagesToSnapshot = [0, 0.25, 0.5, 0.75, 1.0]
+  /// The progress percentage values that are snapshot by default
+  private static let defaultProgressPercentageValues: [Double] = [0, 0.25, 0.5, 0.75, 1.0]
+
+  /// All of the `progressPercentagesToSnapshot` values used in the snapshot tests
+  private let knownProgressPercentageValues: Set<Double> = Set(Samples.sampleAnimationNames.flatMap {
+    SnapshotConfiguration.forSample(named: $0).customProgressValuesToSnapshot ?? defaultProgressPercentageValues
+  })
+
+  /// All of the `customFramesToSnapshot` values used in the snapshot tests
+  private let knownFrameValues: Set<Double> = Set(Samples.sampleAnimationNames.flatMap {
+    SnapshotConfiguration.forSample(named: $0).customFramesToSnapshot ?? []
+  })
+
+  /// Progress values or frames that should be snapshot in `compareSampleSnapshots`
+  private func pausedStatesToSnapshot(for snapshotConfiguration: SnapshotConfiguration) -> [LottiePlaybackMode.PausedState] {
+    if let customFramesToSnapshot = snapshotConfiguration.customFramesToSnapshot {
+      return customFramesToSnapshot.map { .frame($0) }
+    }
+
+    if let customProgressValuesToSnapshot = snapshotConfiguration.customProgressValuesToSnapshot {
+      for customProgressValue in customProgressValuesToSnapshot {
+        assert(
+          knownProgressPercentageValues.contains(customProgressValue),
+          "All progress values being used must be listed in `knownProgressPercentageValues`")
+      }
+
+      return customProgressValuesToSnapshot.map { .progress($0) }
+    }
+
+    return SnapshotTests.defaultProgressPercentageValues.map { .progress($0) }
+  }
 
   /// Captures snapshots of `sampleAnimationURLs` and compares them to the snapshot images stored on disk
   private func compareSampleSnapshots(
@@ -109,20 +151,39 @@ class SnapshotTests: XCTestCase {
 
     #if os(iOS)
     for sampleAnimationName in Samples.sampleAnimationNames {
-      for percent in progressPercentagesToSnapshot {
+      for pauseState in pausedStatesToSnapshot(for: SnapshotConfiguration.forSample(named: sampleAnimationName)) {
+        guard SnapshotConfiguration.forSample(named: sampleAnimationName).shouldSnapshot(using: configuration) else {
+          continue
+        }
+
         guard
           let animationView = await SnapshotConfiguration.makeAnimationView(
             for: sampleAnimationName,
             configuration: configuration)
         else { continue }
 
-        animationView.currentProgress = CGFloat(percent)
+        animationView.setPlaybackMode(.paused(at: pauseState))
+
+        let pauseStateDescription: String =
+          switch pauseState {
+          case .progress(let percent):
+            "\(Int(percent * 100))%"
+          case .frame(let frame):
+            "Frame \(Int(frame))"
+          case .time(let time):
+            "Time \(time))"
+          case .marker(let markerName, position: _):
+            markerName
+          case .currentFrame:
+            "Current Frame"
+          }
 
         assertSnapshot(
           matching: animationView,
           as: .imageOfPresentationLayer(
-            precision: SnapshotConfiguration.forSample(named: sampleAnimationName).precision),
-          named: "\(sampleAnimationName) (\(Int(percent * 100))%)",
+            precision: SnapshotConfiguration.forSample(named: sampleAnimationName).precision,
+            perceptualPrecision: 0.97),
+          named: "\(sampleAnimationName) (\(pauseStateDescription))",
           testName: testName)
       }
     }
@@ -135,8 +196,8 @@ class SnapshotTests: XCTestCase {
 
 extension LottieAnimation {
   /// The size that this animation should be snapshot at
-  var snapshotSize: CGSize {
-    let maxDimension: CGFloat = 500
+  func snapshotSize(for configuration: SnapshotConfiguration) -> CGSize {
+    let maxDimension: CGFloat = configuration.maxSnapshotDimension
 
     // If this is a landscape aspect ratio, we clamp the width
     if width > height {
@@ -258,14 +319,11 @@ extension SnapshotConfiguration {
   static func makeAnimationView(
     for sampleAnimationName: String,
     configuration: LottieConfiguration,
-    logger: LottieLogger = LottieLogger.shared)
+    logger: LottieLogger = LottieLogger.shared,
+    customSnapshotConfiguration: SnapshotConfiguration? = nil)
     async -> LottieAnimationView?
   {
-    let snapshotConfiguration = SnapshotConfiguration.forSample(named: sampleAnimationName)
-
-    guard snapshotConfiguration.shouldSnapshot(using: configuration) else {
-      return nil
-    }
+    let snapshotConfiguration = customSnapshotConfiguration ?? SnapshotConfiguration.forSample(named: sampleAnimationName)
 
     let animationView: LottieAnimationView
     if let animation = Samples.animation(named: sampleAnimationName) {
@@ -290,7 +348,7 @@ extension SnapshotConfiguration {
 
     // Set up the animation view with a valid frame
     // so the geometry is correct when setting up the `CAAnimation`s
-    animationView.frame.size = animation.snapshotSize
+    animationView.frame.size = animation.snapshotSize(for: snapshotConfiguration)
 
     for (keypath, customValueProvider) in snapshotConfiguration.customValueProviders {
       animationView.setValueProvider(customValueProvider, keypath: keypath)
@@ -306,6 +364,10 @@ extension SnapshotConfiguration {
 
     if let customFontProvider = snapshotConfiguration.customFontProvider {
       animationView.fontProvider = customFontProvider
+    }
+
+    if let customViewportFrame = snapshotConfiguration.customViewportFrame {
+      animationView.viewportFrame = customViewportFrame
     }
 
     return animationView
