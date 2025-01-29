@@ -5,8 +5,6 @@
 //  Created by Brandon Withrow on 2/4/19.
 //
 
-import CoreGraphics
-import Foundation
 import QuartzCore
 
 // MARK: - LayerTransformProperties
@@ -24,13 +22,13 @@ final class LayerTransformProperties: NodePropertyMap, KeypathSearchable {
     opacity = NodeProperty(provider: KeyframeInterpolator(keyframes: transform.opacity.keyframes))
 
     var propertyMap: [String: AnyNodeProperty] = [
-      "Anchor Point" : anchor,
-      "Scale" : scale,
-      "Rotation": rotationZ,
-      "Rotation X" : rotationX,
-      "Rotation Y" : rotationY,
-      "Rotation Z" : rotationZ,
-      "Opacity" : opacity,
+      "Anchor Point": anchor,
+      PropertyName.scale.rawValue: scale,
+      PropertyName.rotation.rawValue: rotationZ,
+      "Rotation X": rotationX,
+      "Rotation Y": rotationY,
+      "Rotation Z": rotationZ,
+      PropertyName.opacity.rawValue: opacity,
     ]
 
     if
@@ -46,7 +44,7 @@ final class LayerTransformProperties: NodePropertyMap, KeypathSearchable {
       position = nil
     } else if let positionKeyframes = transform.position?.keyframes {
       let position: NodeProperty<LottieVector3D> = NodeProperty(provider: KeyframeInterpolator(keyframes: positionKeyframes))
-      propertyMap["Position"] = position
+      propertyMap[PropertyName.position.rawValue] = position
       self.position = position
       positionX = nil
       positionY = nil
@@ -121,17 +119,17 @@ class LayerTransformNode: AnimatorNode {
   func rebuildOutputs(frame _: CGFloat) {
     opacity = Float(transformProperties.opacity.value.cgFloatValue) * 0.01
 
-    let position: CGPoint
-    if let point = transformProperties.position?.value.pointValue {
-      position = point
-    } else if
-      let xPos = transformProperties.positionX?.value.cgFloatValue,
-      let yPos = transformProperties.positionY?.value.cgFloatValue
-    {
-      position = CGPoint(x: xPos, y: yPos)
-    } else {
-      position = .zero
-    }
+    let position: CGPoint =
+      if let point = transformProperties.position?.value.pointValue {
+        point
+      } else if
+        let xPos = transformProperties.positionX?.value.cgFloatValue,
+        let yPos = transformProperties.positionY?.value.cgFloatValue
+      {
+        CGPoint(x: xPos, y: yPos)
+      } else {
+        .zero
+      }
 
     localTransform = CATransform3D.makeTransform(
       anchor: transformProperties.anchor.value.pointValue,

@@ -26,16 +26,27 @@ final class ValueProviderStore {
       because that would require calling the closure on the main thread once per frame.
       """)
 
-    // TODO: Support more value types
-    logger.assert(
-      keypath.keys.last == PropertyName.color.rawValue,
-      "The Core Animation rendering engine currently only supports customizing color values")
+    let supportedProperties = PropertyName.allCases.map { $0.rawValue }
+    let propertyBeingCustomized = keypath.keys.last ?? ""
 
+    logger.assert(
+      supportedProperties.contains(propertyBeingCustomized),
+      """
+      The Core Animation rendering engine currently doesn't support customizing "\(propertyBeingCustomized)" \
+      properties. Supported properties are: \(supportedProperties.joined(separator: ", ")).
+      """)
+
+    valueProviders.removeAll(where: { $0.keypath == keypath })
     valueProviders.append((keypath: keypath, valueProvider: valueProvider))
   }
 
-  // Retrieves the custom value keyframes for the given property,
-  // if an `AnyValueProvider` was registered for the given keypath.
+  /// Removes all ValueProviders for the given `AnimationKeypath`
+  func removeValueProvider(for keypath: AnimationKeypath) {
+    valueProviders.removeAll(where: { $0.keypath.matches(keypath) })
+  }
+
+  /// Retrieves the custom value keyframes for the given property,
+  /// if an `AnyValueProvider` was registered for the given keypath.
   func customKeyframes<Value>(
     of customizableProperty: CustomizableProperty<Value>,
     for keypath: AnimationKeypath,
@@ -67,9 +78,11 @@ final class ValueProviderStore {
 
     // Convert the type-erased keyframe values using this `CustomizableProperty`'s conversion closure
     let typedKeyframes = typeErasedKeyframes.compactMap { typeErasedKeyframe -> Keyframe<Value>? in
-      guard let convertedValue = customizableProperty.conversion(typeErasedKeyframe.value) else {
+      guard let convertedValue = customizableProperty.conversion(typeErasedKeyframe.value, anyValueProvider) else {
         logger.assertionFailure("""
-          Could not convert value of type \(type(of: typeErasedKeyframe.value)) to expected type \(Value.self)
+          Could not convert value of type \(type(of: typeErasedKeyframe.value)) from \(anyValueProvider) to expected type \(
+          Value
+          .self)
           """)
         return nil
       }
@@ -88,10 +101,9 @@ final class ValueProviderStore {
   // MARK: Private
 
   private let logger: LottieLogger
-
   private var valueProviders = [(keypath: AnimationKeypath, valueProvider: AnyValueProvider)]()
 
-  /// Retrieves the most-recently-registered Value Provider that matches the given keypat
+  /// Retrieves the most-recently-registered Value Provider that matches the given keypath.
   private func valueProvider(for keypath: AnimationKeypath) -> AnyValueProvider? {
     // Find the last keypath matching the given keypath,
     // so we return the value provider that was registered most-recently
@@ -108,9 +120,9 @@ extension AnyValueProviderStorage {
   var isSupportedByCoreAnimationRenderingEngine: Bool {
     switch self {
     case .singleValue, .keyframes:
-      return true
+      true
     case .closure:
-      return false
+      false
     }
   }
 }
