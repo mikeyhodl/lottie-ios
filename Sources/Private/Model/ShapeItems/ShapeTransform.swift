@@ -5,7 +5,7 @@
 //  Created by Brandon Withrow on 1/8/19.
 //
 
-import Foundation
+// MARK: - ShapeTransform
 
 final class ShapeTransform: ShapeItem {
 
@@ -164,15 +164,6 @@ final class ShapeTransform: ShapeItem {
   /// Skew Axis
   let skewAxis: KeyframeGroup<LottieVector1D>
 
-  /// Whether or not this transform has a non-zero skew value
-  var hasSkew: Bool {
-    guard !skew.keyframes.isEmpty, !skewAxis.keyframes.isEmpty else {
-      return false
-    }
-
-    return skew.keyframes.contains(where: { $0.value.cgFloatValue != 0 })
-  }
-
   override func encode(to encoder: Encoder) throws {
     try super.encode(to: encoder)
     var container = encoder.container(keyedBy: CodingKeys.self)
@@ -202,3 +193,10 @@ final class ShapeTransform: ShapeItem {
     case skewAxis = "sa"
   }
 }
+
+// MARK: @unchecked Sendable
+
+/// `ShapeTransform` inherits `@unchecked Sendable` from `ShapeItem` and
+/// we need to restate that here to avoid a warning in Xcode 16
+// swiftlint:disable:next no_unchecked_sendable
+extension ShapeTransform: @unchecked Sendable { }
